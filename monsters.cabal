@@ -1,0 +1,54 @@
+cabal-version: 2.2
+
+-- This file has been generated from package.yaml by hpack version 0.36.0.
+--
+-- see: https://github.com/sol/hpack
+
+name:               monsters
+version:            0.1.0
+synopsis:           Dungeon World Monsters
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Sean Hess
+maintainer:         seanhess@gmail.com
+category:           Game
+homepage:           https://github.com/seanhess/dungeon-world-monsters
+build-type:         Simple
+extra-source-files:
+      README.md
+
+executable level2
+    main-is: Main.hs
+    other-modules:
+          Paths_monsters
+    autogen-modules:
+          Paths_monsters
+    hs-source-dirs:
+          app
+    default-extensions:
+          TypeFamilies
+          DataKinds
+          DeriveAnyClass
+          DerivingStrategies
+          OverloadedRecordDot
+          OverloadedStrings
+          QuasiQuotes
+          DuplicateRecordFields
+          LambdaCase
+          NoImplicitPrelude
+          NoFieldSelectors
+    ghc-options: -Wall
+    build-depends:
+          aeson
+        , base >=4.16.4.0
+        , bytestring
+        , containers
+        , effectful
+        , exceptions
+        , megaparsec
+        , string-conversions
+        , string-interpolate
+        , tagged
+        , text
+        , time
+    default-language: GHC2021

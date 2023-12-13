@@ -1,0 +1,40 @@
+name:               monsters
+version:            0.1.0
+synopsis:           Dungeon World Monsters 
+homepage:           https://github.com/seanhess/dungeon-world-monsters
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Sean Hess
+maintainer:         seanhess@gmail.com
+category:           Game
+
+extra-source-files:
+  - README.md
+
+language: GHC2021
+
+ghc-options:
+  - -Wall
+
+default-extensions:
+  - TypeFamilies
+  - DataKinds
+  - DeriveAnyClass
+  - DerivingStrategies
+  - OverloadedRecordDot
+  - OverloadedStrings
+  - QuasiQuotes
+  - DuplicateRecordFields
+  - LambdaCase
+  - NoFieldSelectors
+
+dependencies:
+  - base >=4.16.4.0
+  - xml
+
+
+executables:
+  level2:
+    source-dirs: app
+    main: Main.hs
+
