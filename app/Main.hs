@@ -1,6 +1,7 @@
 module Main where
 
 import App.Parse
+import Data.Maybe (fromMaybe)
 import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.IO.Utf8 qualified as Utf8
@@ -13,20 +14,19 @@ import Text.Megaparsec.Char.Lexer (decimal)
 
 main :: IO ()
 main = do
-  inp <- Utf8.readFile "data/Caverns.xml"
+  let filePath = "data/Woods.xml"
+  inp <- Utf8.readFile filePath
   -- let elems = parseXML inp
 
   putStrLn "PARSING"
-  mons <- parseIO parseMonsters "data/Caverns.xml" inp
+  mons <- parseIO parseMonsters filePath inp
 
   mapM_ print mons
 
 data Monster = Monster
   { name :: Text
   , tags :: [Text]
-  , attack :: Attack
-  , hp :: Int
-  , armor :: Int
+  , stats :: Maybe Stats
   , qualities :: Maybe Text
   , description :: Text
   , instinct :: Text
@@ -41,6 +41,13 @@ data Attack = Attack
   }
   deriving (Show)
 
+data Stats = Stats
+  { attack :: Attack
+  , hp :: Int
+  , armor :: Int
+  }
+  deriving (Show)
+
 parseMonsters :: Parser [Monster]
 parseMonsters = do
   _ <- manyTill anySingle (string "<Body>")
@@ -52,11 +59,10 @@ parseMonster :: Parser Monster
 parseMonster = do
   (n, ts) <- paragraph "MonsterName" $ do
     n <- name
-    ts <- tags
-    pure (n, ts)
+    ts <- optional $ try tags
+    pure (n, fromMaybe [] ts)
 
-  (atk, dmg, hp, armor) <- paragraph "MonsterStats" stats
-  att <- paragraph "MonsterStats" tags
+  stats <- optional $ try $ parseStats
 
   qual <- optional $ try $ paragraph "MonsterQualities" qualities
   (desc, inst) <- paragraph "MonsterDescription" description
@@ -67,49 +73,18 @@ parseMonster = do
     $ Monster
       { name = n
       , tags = ts
-      , attack = Attack atk dmg att
-      , hp
-      , armor
+      , stats = stats
       , qualities = qual
       , description = desc
       , instinct = inst
       , moves = mvs
       }
  where
-  paragraph :: Text -> Parser a -> Parser a
-  paragraph att prs = do
-    _ <- string "<p aid:pstyle=\""
-    _ <- string att
-    _ <- string "\">"
-    a <- prs
-    _ <- string "</p>"
-    _ <- newline
-    pure a
-
   name :: Parser Text
   name = do
     -- parse until tab
     nm <- manyTill anySingle (string "\t")
     pure $ pack nm
-
-  tags :: Parser [Text]
-  tags = do
-    _ <- string "<span aid:cstyle=\"Tags\">"
-    ts <- some alphaNumChar `sepBy` string ", "
-    _ <- string "</span>"
-    pure $ map pack ts
-
-  stats :: Parser (Text, Text, Int, Int)
-  stats = do
-    att <- manyTill anySingle (string " (")
-    dmg <- manyTill anySingle (char ')')
-    space
-    hp <- decimal
-    _ <- string " HP"
-    space
-    armor <- decimal
-    _ <- string " Armor"
-    pure (pack att, pack dmg, hp, armor)
 
   qualities :: Parser Text
   qualities = do
@@ -136,3 +111,38 @@ parseMonster = do
   move = do
     _ <- string "<li>"
     pack <$> manyTill anySingle (string "</li>")
+
+parseStats :: Parser Stats
+parseStats = do
+  (name, damage, hp, armor) <- paragraph "MonsterStats" line1
+  tgs <- paragraph "MonsterStats" tags
+  pure $ Stats{hp, armor, attack = Attack{name, damage, tags = tgs}}
+ where
+  line1 :: Parser (Text, Text, Int, Int)
+  line1 = do
+    att <- manyTill anySingle (string " (")
+    dmg <- manyTill anySingle (char ')')
+    space
+    hp <- decimal
+    _ <- string " HP"
+    space
+    armor <- decimal
+    _ <- string " Armor"
+    pure (pack att, pack dmg, hp, armor)
+
+paragraph :: Text -> Parser a -> Parser a
+paragraph att prs = do
+  _ <- string "<p aid:pstyle=\""
+  _ <- string att
+  _ <- string "\">"
+  a <- prs
+  _ <- string "</p>"
+  _ <- newline
+  pure a
+
+tags :: Parser [Text]
+tags = do
+  _ <- string "<span aid:cstyle=\"Tags\">"
+  ts <- some alphaNumChar `sepEndBy` string ", "
+  _ <- string "</span>"
+  pure $ map pack ts
