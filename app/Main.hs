@@ -1,98 +1,138 @@
 module Main where
 
-import Control.Monad (forM_)
-import Data.Either (lefts, rights)
-import Data.List
-import Data.Maybe
-import Data.Text (Text, pack, unpack)
+import App.Parse
+import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.IO.Utf8 qualified as Utf8
-import Text.XML.Light
+import Text.Megaparsec
+import Text.Megaparsec.Char
+import Text.Megaparsec.Char.Lexer (decimal)
+
+-- import Data.Text qualified as T
+-- import Debug.Trace
 
 main :: IO ()
 main = do
   inp <- Utf8.readFile "data/Caverns.xml"
-  let elems = parseXML inp
+  -- let elems = parseXML inp
 
   putStrLn "PARSING"
-  Just bod <- pure $ findBody elems
-  print bod.elName
-  print $ length bod.elContent
+  mons <- parseIO parseMonsters "data/Caverns.xml" inp
 
-  let mels = groupMonsters bod
-  print $ length mels
-
-  let ems = map parseMonster mels
-  let errs = lefts ems
-  let mons = rights ems
-
-  putStrLn "ERRORS"
-  forM_ errs $ \e -> do
-    fail e
-
-  putStrLn "MONSTERS"
-  let m = head mons
-  print m
-  putStrLn $ T.unpack m.description
-
-findBody :: [Content] -> Maybe Element
-findBody [] = Nothing
-findBody elems = do
-  listToMaybe $ mapMaybe findBody' elems
- where
-  findBody' :: Content -> Maybe Element
-  findBody' (Elem e) =
-    if e.elName.qName == "Body"
-      then Just e
-      else findBody e.elContent
-  findBody' _ = Nothing
-
-element :: Content -> Maybe Element
-element (Elem e) = Just e
-element _ = Nothing
-
--- oh no, they're nested!
-groupMonsters :: Element -> [[Content]]
-groupMonsters body =
-  groupBy sameMonster body.elContent
- where
-  sameMonster :: Content -> Content -> Bool
-  sameMonster _ (Elem (Element _ (a : _) _ _)) =
-    a.attrVal /= "MonsterName"
-  sameMonster _ _ = True
+  mapM_ print mons
 
 data Monster = Monster
   { name :: Text
-  , attack :: Text
-  , hp :: Text
-  , armor :: Text
+  , tags :: [Text]
+  , attack :: Attack
+  , hp :: Int
+  , armor :: Int
+  , qualities :: Maybe Text
   , description :: Text
+  , instinct :: Text
+  , moves :: [Text]
   }
   deriving (Show)
 
-parseMonster :: [Content] -> Either String Monster
-parseMonster cnt = do
-  name <- contentText <$> paragraph "MonsterName" cnt
-  stats <- contentText <$> paragraph "MonsterStats" cnt
-  (attack, hp, armor) <- parseStats stats
-  description <- contentText <$> paragraph "MonsterDescription" cnt
-  pure $ Monster{name, description, hp, armor, attack}
+data Attack = Attack
+  { name :: Text
+  , damage :: Text
+  , tags :: [Text]
+  }
+  deriving (Show)
+
+parseMonsters :: Parser [Monster]
+parseMonsters = do
+  _ <- manyTill anySingle (string "<Body>")
+  mons <- parseMonster `sepEndBy` newline
+  _ <- string "</Body></Root>"
+  pure mons
+
+parseMonster :: Parser Monster
+parseMonster = do
+  (n, ts) <- paragraph "MonsterName" $ do
+    n <- name
+    ts <- tags
+    pure (n, ts)
+
+  (atk, dmg, hp, armor) <- paragraph "MonsterStats" stats
+  att <- paragraph "MonsterStats" tags
+
+  qual <- optional $ try $ paragraph "MonsterQualities" qualities
+  (desc, inst) <- paragraph "MonsterDescription" description
+
+  mvs <- moves
+
+  pure
+    $ Monster
+      { name = n
+      , tags = ts
+      , attack = Attack atk dmg att
+      , hp
+      , armor
+      , qualities = qual
+      , description = desc
+      , instinct = inst
+      , moves = mvs
+      }
  where
-  isAnyAttr :: String -> Content -> Bool
-  isAnyAttr n (Elem el) = any (\a -> a.attrVal == n) el.elAttribs
-  isAnyAttr _ _ = False
+  paragraph :: Text -> Parser a -> Parser a
+  paragraph att prs = do
+    _ <- string "<p aid:pstyle=\""
+    _ <- string att
+    _ <- string "\">"
+    a <- prs
+    _ <- string "</p>"
+    _ <- newline
+    pure a
 
-  paragraph :: String -> [Content] -> Either String Content
-  paragraph n cs =
-    maybe (Left "Paragraph") pure $ find (isAnyAttr n) cs
+  name :: Parser Text
+  name = do
+    -- parse until tab
+    nm <- manyTill anySingle (string "\t")
+    pure $ pack nm
 
-  contentText :: Content -> Text
-  contentText (Text c) = pack c.cdData
-  contentText (Elem e) = T.strip $ pack $ unwords $ map (.cdData) $ onlyText e.elContent
-  contentText _ = ""
+  tags :: Parser [Text]
+  tags = do
+    _ <- string "<span aid:cstyle=\"Tags\">"
+    ts <- some alphaNumChar `sepBy` string ", "
+    _ <- string "</span>"
+    pure $ map pack ts
 
-  parseStats :: Text -> Either String (Text, Text, Text)
-  parseStats t = do
-    case filter (not . T.null) $ T.splitOn "\t" t of
-      [att, hp, armor] -> Right (att, hp, armor)
-      w -> Left $ show w
+  stats :: Parser (Text, Text, Int, Int)
+  stats = do
+    att <- manyTill anySingle (string " (")
+    dmg <- manyTill anySingle (char ')')
+    space
+    hp <- decimal
+    _ <- string " HP"
+    space
+    armor <- decimal
+    _ <- string " Armor"
+    pure (pack att, pack dmg, hp, armor)
+
+  qualities :: Parser Text
+  qualities = do
+    _ <- string "<strong>Special Qualities:</strong>"
+    space
+    t <- some $ anySingleBut '<'
+    pure $ pack t
+
+  description :: Parser (Text, Text)
+  description = do
+    d <- manyTill anySingle (string "<em>Instinct</em>:")
+    space
+    i <- some $ anySingleBut '<'
+    pure (T.strip (pack d), pack i)
+
+  moves :: Parser [Text]
+  moves = do
+    _ <- string "<ul>"
+    mvs <- move `sepBy` newline
+    _ <- string "</ul>"
+    pure mvs
+
+  move :: Parser Text
+  move = do
+    _ <- string "<li>"
+    pack <$> manyTill anySingle (string "</li>")
