@@ -40,7 +40,10 @@ executable level2
     ghc-options: -Wall
     build-depends:
           base >=4.16.4.0
+        , directory
+        , filepath
         , megaparsec
+        , string-interpolate
         , text >=2.1
         , xml
     default-language: GHC2021

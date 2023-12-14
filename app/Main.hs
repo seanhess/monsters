@@ -1,10 +1,17 @@
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE NoFieldSelectors #-}
+
 module Main where
 
 import App.Parse
+import Control.Monad (forM_)
 import Data.Maybe (fromMaybe)
+import Data.String.Interpolate (i)
 import Data.Text (Text, pack)
 import Data.Text qualified as T
 import Data.Text.IO.Utf8 qualified as Utf8
+import System.Directory
+import System.FilePath
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Text.Megaparsec.Char.Lexer (decimal)
@@ -15,13 +22,27 @@ import Text.Megaparsec.Char.Lexer (decimal)
 main :: IO ()
 main = do
   let filePath = "data/Woods.xml"
-  inp <- Utf8.readFile filePath
-  -- let elems = parseXML inp
+  convertFile filePath "output"
 
-  putStrLn "PARSING"
-  mons <- parseIO parseMonsters filePath inp
+-- let elems = parseXML inp
 
-  mapM_ print mons
+-- putStrLn "PARSING"
+-- mons <- parseIO parseMonsters filePath inp
+-- putStrLn $ T.unpack $ render $ head mons
+
+convertFile :: FilePath -> FilePath -> IO ()
+convertFile src dir = do
+  let settingName = dropExtension $ takeFileName src
+      outputDir = dir </> settingName
+  createDirectoryIfMissing True outputDir
+  inp <- Utf8.readFile src
+  mons <- parseIO parseMonsters src inp
+  forM_ mons $ \m -> do
+    let outFile = outputDir </> T.unpack m.name <> ".md"
+    putStrLn $ "Writing " <> outFile
+    writeFile outFile (T.unpack $ render m)
+
+-- mapM_ print mons
 
 data Monster = Monster
   { name :: Text
@@ -59,13 +80,13 @@ parseMonster :: Parser Monster
 parseMonster = do
   (n, ts) <- paragraph "MonsterName" $ do
     n <- name
-    ts <- optional $ try tags
+    ts <- optional $ try parseTags
     pure (n, fromMaybe [] ts)
 
-  stats <- optional $ try $ parseStats
+  stats <- optional $ try parseStats
 
   qual <- optional $ try $ paragraph "MonsterQualities" qualities
-  (desc, inst) <- paragraph "MonsterDescription" description
+  (desc, inst) <- multiDescription
 
   mvs <- moves
 
@@ -93,12 +114,23 @@ parseMonster = do
     t <- some $ anySingleBut '<'
     pure $ pack t
 
+  multiDescription :: Parser (Text, Text)
+  multiDescription = do
+    (des, ins) <- paragraph "MonsterDescription" description
+    pure (cleanDescription des, ins)
+
+  cleanDescription :: Text -> Text
+  cleanDescription =
+    T.strip
+      . T.replace "<p aid:pstyle=\"NoIndent\">" ""
+      . T.replace "</p>" ""
+
   description :: Parser (Text, Text)
   description = do
     d <- manyTill anySingle (string "<em>Instinct</em>:")
     space
-    i <- some $ anySingleBut '<'
-    pure (T.strip (pack d), pack i)
+    ins <- some $ anySingleBut '<'
+    pure (pack d, pack ins)
 
   moves :: Parser [Text]
   moves = do
@@ -115,7 +147,7 @@ parseMonster = do
 parseStats :: Parser Stats
 parseStats = do
   (name, damage, hp, armor) <- paragraph "MonsterStats" line1
-  tgs <- paragraph "MonsterStats" tags
+  tgs <- paragraph "MonsterStats" parseTags
   pure $ Stats{hp, armor, attack = Attack{name, damage, tags = tgs}}
  where
   line1 :: Parser (Text, Text, Int, Int)
@@ -140,9 +172,48 @@ paragraph att prs = do
   _ <- newline
   pure a
 
-tags :: Parser [Text]
-tags = do
+parseTags :: Parser [Text]
+parseTags = do
   _ <- string "<span aid:cstyle=\"Tags\">"
   ts <- some alphaNumChar `sepEndBy` string ", "
   _ <- string "</span>"
   pure $ map pack ts
+
+render :: Monster -> Text
+render m = T.intercalate "\n\n" sections
+ where
+  sections =
+    filter
+      (not . T.null)
+      $ [ tags m.tags
+        , instinct m.instinct
+        , maybe "" stats m.stats
+        , maybe "" quality m.qualities
+        , maybe "" (attack . (.attack)) m.stats
+        , description m.description
+        ]
+      <> map move m.moves
+
+  tag t = "#" <> t
+  tags ts = T.intercalate " " $ map tag ts
+  instinct is = "**Instinct**: " <> is
+  quality q = "**Special Qualities**: " <> q
+  description d = "*" <> d <> "*"
+
+  move mv = ">" <> mv
+
+  attack a =
+    let line1 = "> **" <> a.name <> "** (" <> meta "dmg" a.damage <> ")"
+        line2 = "> *" <> T.intercalate ", " a.tags <> "*"
+     in T.intercalate "\n" [line1, line2]
+
+  meta :: Text -> Text -> Text
+  meta f t = "(" <> f <> " :: " <> t <> ")"
+
+  stats :: Stats -> Text
+  stats s =
+    let hp = meta "hp" (pack $ show s.hp)
+        arm = meta "armor" (pack $ show s.armor)
+     in [i||       |         |
+| ----- | ------- |
+| #{hp} HP | #{arm} Armor ||]

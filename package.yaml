@@ -32,6 +32,9 @@ dependencies:
   - base >=4.16.4.0
   - xml
   - megaparsec
+  - string-interpolate
+  - directory
+  - filepath
   - text >= 2.1
 
 
