@@ -18,11 +18,26 @@ import Text.Megaparsec.Char.Lexer (decimal)
 
 -- import Data.Text qualified as T
 -- import Debug.Trace
+--
+--
+files :: [FilePath]
+files =
+  [ "data/Woods.xml"
+  , "data/Caverns.xml"
+  , "data/Depths.xml"
+  , "data/Experiments.xml"
+  , "data/Folk.xml"
+  , "data/Hordes.xml"
+  , "data/Planes.xml"
+  , "data/Swamp.xml"
+  , "data/Undead.xml"
+  , "data/Woods.xml"
+  ]
 
 main :: IO ()
 main = do
-  let filePath = "data/Woods.xml"
-  convertFile filePath "output"
+  forM_ files $ \f -> do
+    convertFile f "output"
 
 -- let elems = parseXML inp
 
