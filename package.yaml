@@ -31,6 +31,7 @@ default-extensions:
 dependencies:
   - base >=4.16.4.0
   - xml
+  - text >= 2.1
 
 
 executables:

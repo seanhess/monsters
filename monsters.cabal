@@ -35,20 +35,10 @@ executable level2
           QuasiQuotes
           DuplicateRecordFields
           LambdaCase
-          NoImplicitPrelude
           NoFieldSelectors
     ghc-options: -Wall
     build-depends:
-          aeson
-        , base >=4.16.4.0
-        , bytestring
-        , containers
-        , effectful
-        , exceptions
-        , megaparsec
-        , string-conversions
-        , string-interpolate
-        , tagged
-        , text
-        , time
+          base >=4.16.4.0
+        , text >=2.1
+        , xml
     default-language: GHC2021
